@@ -154,6 +154,13 @@ class TaskList(base._Widget, base.PaddingMixin, base.MarginMixin):
             'Icon size. '
             '(Calculated if set to None. Icons are hidden if set to 0.)'
         ),
+        (
+            'icon_alignment',
+            None,
+            "Vertical icon alignment. (None, 'center')"
+            "If 'center' the vertical position is calculated to center icon on bar."
+            "If None vertical position calculated from padding and borderwidth."
+        ),
     ]
 
     def __init__(self, **config):
@@ -454,7 +461,12 @@ class TaskList(base._Widget, base.PaddingMixin, base.MarginMixin):
             return
 
         x = offset + self.borderwidth + self.padding_x
+        
         y = self.padding_y + self.borderwidth
+        if self.icon_alignment:
+            y = (self.bar.height - surface.get_surface().get_height())/2
+            if self.icon_size:
+                y = (self.bar.height - self.icon_size)/2
 
         self.drawer.ctx.save()
         self.drawer.ctx.translate(x, y)
