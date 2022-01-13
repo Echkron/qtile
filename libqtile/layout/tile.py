@@ -30,6 +30,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from libqtile.config import Match
 from libqtile.layout.base import _SimpleLayoutBase
 
 
@@ -51,30 +52,49 @@ class Tile(_SimpleLayoutBase):
         ("border_width", 1, "Border width."),
         ("margin", 0, "Margin of the layout (int or list of ints [N E S W])"),
         ("margin_on_single", True, "Whether to draw margin if there is only one window."),
-        ("ratio", 0.618,
-            "Width-percentage of screen size reserved for master windows."),
+        ("ratio", 0.618, "Width-percentage of screen size reserved for master windows."),
         ("max_ratio", 0.85, "Maximum width of master windows"),
         ("min_ratio", 0.15, "Minimum width of master windows"),
-        ("master_length", 1,
+        (
+            "master_length",
+            1,
             "Amount of windows displayed in the master stack. Surplus windows "
-            "will be moved to the slave stack."),
-        ("expand", True,
-            "Expand the master windows to the full screen width if no slaves "
-            "are present."),
-        ("ratio_increment", 0.05,
+            "will be moved to the slave stack.",
+        ),
+        (
+            "expand",
+            True,
+            "Expand the master windows to the full screen width if no slaves " "are present.",
+        ),
+        (
+            "ratio_increment",
+            0.05,
             "By which amount to change ratio when cmd_decrease_ratio or "
-            "cmd_increase_ratio are called."),
-        ("add_on_top", True,
+            "cmd_increase_ratio are called.",
+        ),
+        (
+            "add_on_top",
+            True,
             "Add new clients before all the others, potentially pushing other "
-            "windows into slave stack."),
-        ("add_after_last", False,
-            "Add new clients after all the others. If this is True, it "
-            "overrides add_on_top."),
-        ("shift_windows", False,
+            "windows into slave stack.",
+        ),
+        (
+            "add_after_last",
+            False,
+            "Add new clients after all the others. If this is True, it " "overrides add_on_top.",
+        ),
+        (
+            "shift_windows",
+            False,
             "Allow to shift windows within the layout. If False, the layout "
-            "will be rotated instead."),
-        ("master_match", None,
-            "A Match object defining which window(s) should be kept masters."),
+            "will be rotated instead.",
+        ),
+        (
+            "master_match",
+            None,
+            "A Match object defining which window(s) should be kept masters (single or a list "
+            "of Match-objects).",
+        ),
     ]
 
     def __init__(self, **config):
@@ -92,11 +112,11 @@ class Tile(_SimpleLayoutBase):
 
     @property
     def master_windows(self):
-        return self.clients[:self.master_length]
+        return self.clients[: self.master_length]
 
     @property
     def slave_windows(self):
-        return self.clients[self.master_length:]
+        return self.clients[self.master_length :]
 
     def up(self):
         if self.shift_windows:
@@ -115,9 +135,15 @@ class Tile(_SimpleLayoutBase):
     def reset_master(self, match=None):
         if not match and not self.master_match:
             return
-        match = match or self.master_match
         if self.clients:
-            masters = [c for c in self.clients if match.compare(c)]
+            master_match = match or self.master_match
+            if isinstance(master_match, Match):
+                master_match = [master_match]
+            masters = []
+            for c in self.clients:
+                for match in master_match:
+                    if match.compare(c):
+                        masters.append(c)
             for client in reversed(masters):
                 self.clients.remove(client)
                 self.clients.append_head(client)
@@ -142,9 +168,11 @@ class Tile(_SimpleLayoutBase):
         if self.clients and client in self.clients:
             pos = self.clients.index(client)
             if client in self.master_windows:
-                w = int(screen_width * self.ratio_size) \
-                    if len(self.slave_windows) or not self.expand \
+                w = (
+                    int(screen_width * self.ratio_size)
+                    if len(self.slave_windows) or not self.expand
                     else screen_width
+                )
                 h = screen_height // self.master_length
                 x = screen_rect.x
                 y = screen_rect.y + pos * h
@@ -152,7 +180,7 @@ class Tile(_SimpleLayoutBase):
                 w = screen_width - int(screen_width * self.ratio_size)
                 h = screen_height // (len(self.slave_windows))
                 x = screen_rect.x + int(screen_width * self.ratio_size)
-                y = screen_rect.y + self.clients[self.master_length:].index(client) * h
+                y = screen_rect.y + self.clients[self.master_length :].index(client) * h
             if client.has_focus:
                 bc = self.border_focus
             else:
@@ -168,7 +196,9 @@ class Tile(_SimpleLayoutBase):
                 h - border_width * 2,
                 border_width,
                 bc,
-                margin=0 if (not self.margin_on_single and len(self.clients) == 1) else self.margin,
+                margin=0
+                if (not self.margin_on_single and len(self.clients) == 1)
+                else self.margin,
             )
             client.unhide()
         else:
@@ -176,10 +206,12 @@ class Tile(_SimpleLayoutBase):
 
     def info(self):
         d = _SimpleLayoutBase.info(self)
-        d.update(dict(
-            master=[c.name for c in self.master_windows],
-            slave=[c.name for c in self.slave_windows],
-        ))
+        d.update(
+            dict(
+                master=[c.name for c in self.master_windows],
+                slave=[c.name for c in self.slave_windows],
+            )
+        )
         return d
 
     def cmd_shuffle_down(self):
