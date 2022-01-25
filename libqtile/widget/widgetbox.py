@@ -93,6 +93,7 @@ class WidgetBox(base._Widget):
                 self.widgets[idx] = w
             self.qtile.register_widget(w)
             w._configure(self.qtile, self.bar)
+            w.offsety = self.bar.border_width[0]
 
             # In case the widget is mirrored, we need to draw it once so the
             # mirror can copy the surface but draw it off screen
@@ -120,7 +121,7 @@ class WidgetBox(base._Widget):
                 # are separate _Window instances.
                 # Systray unhides icons when it draws so we only need to hide them.
                 if isinstance(widget, Systray):
-                    for icon in widget.icons.values():
+                    for icon in widget.tray_icons:
                         icon.hide()
 
             except ValueError:

@@ -215,7 +215,20 @@ class _Window(CommandObject, metaclass=ABCMeta):
 
     @abstractmethod
     def info(self) -> Dict[str, Any]:
-        """Return information on this window."""
+        """
+        Return information on this window.
+
+        Mimimum required keys are:
+        - name
+        - x
+        - y
+        - width
+        - height
+        - group
+        - id
+        - wm_class
+
+        """
         return {}
 
     def cmd_info(self) -> Dict:
@@ -479,6 +492,30 @@ class Window(_Window, metaclass=ABCMeta):
         """
         self.defunct = True
 
+    def cmd_center(self) -> None:
+        """Centers a floating window on the screen."""
+        if not self.floating:
+            return
+
+        if not (self.group and self.group.screen):
+            return
+
+        screen = self.group.screen
+
+        x = (screen.width - self.width) // 2  # type: ignore
+        y = (screen.height - self.height) // 2  # type: ignore
+
+        self.place(
+            x,
+            y,
+            self.width,  # type: ignore
+            self.height,  # type: ignore
+            self.borderwidth,
+            self.bordercolor,  # type: ignore
+            above=True,
+            respect_hints=True,
+        )
+
 
 class Internal(_Window, metaclass=ABCMeta):
     """An Internal window belonging to Qtile."""
@@ -528,6 +565,7 @@ class Static(_Window, metaclass=ABCMeta):
         """Return a dictionary of info."""
         return dict(
             name=self.name,
+            wm_class=self.get_wm_class(),
             x=self.x,
             y=self.y,
             width=self.width,

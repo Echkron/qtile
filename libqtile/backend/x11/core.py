@@ -429,6 +429,10 @@ class Core(base.Core):
         self._root.set_property("_NET_NUMBER_OF_DESKTOPS", len(groups))
         self._root.set_property("_NET_DESKTOP_NAMES", "\0".join(i.name for i in groups))
         self._root.set_property("_NET_CURRENT_DESKTOP", index)
+        viewport = []
+        for group in groups:
+            viewport += [group.screen.x, group.screen.y] if group.screen else [0, 0]
+        self._root.set_property("_NET_DESKTOP_VIEWPORT", viewport)
 
     def lookup_key(self, key: Union[config.Key, config.KeyChord]) -> Tuple[int, int]:
         """Find the keysym and the modifier mask for the given key"""
@@ -721,7 +725,6 @@ class Core(base.Core):
 
     def handle_ScreenChangeNotify(self, event) -> None:  # noqa: N802
         hook.fire("screen_change", event)
-        hook.fire("screens_reconfigured")
 
     @contextlib.contextmanager
     def disable_unmap_events(self):

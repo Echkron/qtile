@@ -336,8 +336,8 @@ class Qtile(CommandObject):
                 for grp in self.groups:
                     if not grp.screen:
                         break
-
-            scr._configure(self, i, x, y, w, h, grp)
+            reconfigure_gaps = (x, y, w, h) != (scr.x, scr.y, scr.width, scr.height)
+            scr._configure(self, i, x, y, w, h, grp, reconfigure_gaps=reconfigure_gaps)
             screens.append(scr)
 
         for screen in self.screens:
@@ -364,6 +364,8 @@ class Qtile(CommandObject):
                     group.layout_all()
                 else:
                     group.hide()
+
+        hook.fire("screens_reconfigured")
 
     def paint_screen(self, screen: Screen, image_path: str, mode: Optional[str] = None) -> None:
         self.core.painter.paint(screen, image_path, mode)
@@ -773,7 +775,9 @@ class Qtile(CommandObject):
         elif name == "bar":
             return False, [x.position for x in self.current_screen.gaps]
         elif name == "window":
-            return True, list(self.windows_map.keys())
+            windows: List[Union[str, int]]
+            windows = [k for k, v in self.windows_map.items() if isinstance(v, CommandObject)]
+            return True, windows
         elif name == "screen":
             return True, list(range(len(self.screens)))
         elif name == "core":
@@ -799,7 +803,11 @@ class Qtile(CommandObject):
             if sel is None:
                 return self.current_window
             else:
-                return self.windows_map.get(sel)  # type: ignore
+                windows: Dict[Union[str, int], base._Window]
+                windows = {
+                    k: v for k, v in self.windows_map.items() if isinstance(v, CommandObject)
+                }
+                return windows.get(sel)
         elif name == "screen":
             if sel is None:
                 return self.current_screen
