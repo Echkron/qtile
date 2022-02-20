@@ -39,6 +39,9 @@ except ImportError:
     libinput = None
 
 if TYPE_CHECKING:
+    from typing import Any
+
+    from pywayland.server import Listener
     from wlroots.wlr_types import InputDevice
     from wlroots.wlr_types.keyboard import KeyboardKeyEvent
 
@@ -113,7 +116,7 @@ class InputConfig(configurable.Configurable):
         ("kb_repeat_delay", 600, "Keyboard delay in milliseconds before repeating"),
     ]
 
-    def __init__(self, **config):
+    def __init__(self, **config: dict[str, Any]) -> None:
         configurable.Configurable.__init__(self, **config)
         self.add_defaults(InputConfig.defaults)
 
@@ -181,15 +184,15 @@ class Keyboard(HasListeners):
             self._keymaps[(layout, options, variant)] = keymap
         self.keyboard.set_keymap(keymap)
 
-    def _on_destroy(self, _listener, _data):
+    def _on_destroy(self, _listener: Listener, _data: Any) -> None:
         logger.debug("Signal: keyboard destroy")
         self.finalize()
 
-    def _on_modifier(self, _listener, _data):
+    def _on_modifier(self, _listener: Listener, _data: Any) -> None:
         self.seat.set_keyboard(self.device)
         self.seat.keyboard_notify_modifiers(self.keyboard.modifiers)
 
-    def _on_key(self, _listener, event: KeyboardKeyEvent):
+    def _on_key(self, _listener: Listener, event: KeyboardKeyEvent) -> None:
         if self.qtile is None:
             # shushes mypy
             self.qtile = self.core.qtile
@@ -340,4 +343,4 @@ def configure_device(device: InputDevice, configs: dict[str, InputConfig]) -> No
     elif device.device_type == input_device.InputDeviceType.KEYBOARD:
         _configure_keyboard(device, conf)
     else:
-        logger.warning("Device not configured. Type '{}' not recognised.", device.device_type)
+        logger.warning("Device not configured. Type '%s' not recognised.", device.device_type)
