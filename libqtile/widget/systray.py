@@ -118,6 +118,8 @@ class Systray(window._Window, base._Widget):
 
     orientations = base.ORIENTATION_BOTH
 
+    supported_backends = {"x11"}
+
     defaults = [
         ("icon_size", 20, "Icon width"),
         ("padding", 5, "Padding between icons"),
@@ -289,3 +291,8 @@ class Systray(window._Window, base._Widget):
         self.conn.conn.core.DestroyWindow(self.wid)
 
         Systray._instances -= 1
+
+    def info(self):
+        info = window._Window.info(self)
+        info["widget"] = base._Widget.info(self)
+        return info

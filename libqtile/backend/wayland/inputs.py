@@ -318,7 +318,7 @@ def _configure_pointer(device: InputDevice, conf: InputConfig, name: str) -> Non
                 )
 
 
-def configure_device(device: InputDevice, configs: dict[str, InputConfig]) -> None:
+def configure_device(device: InputDevice, configs: dict[str, InputConfig] | None) -> None:
     if not configs:
         return
 
@@ -328,6 +328,12 @@ def configure_device(device: InputDevice, configs: dict[str, InputConfig]) -> No
         name = "_"
     identifier = "%d:%d:%s" % (device.vendor, device.product, name)
     type_key = "type:" + device.device_type.name.lower()
+
+    if type_key == "type:pointer":
+        # This checks whether the pointer is a touchpad.
+        handle = device.libinput_get_device_handle()
+        if handle and libinput.libinput_device_config_tap_get_finger_count(handle) > 0:
+            type_key = "type:touchpad"
 
     if identifier in configs:
         conf = configs[identifier]

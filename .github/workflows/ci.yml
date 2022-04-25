@@ -20,6 +20,8 @@ jobs:
                 # - /tox.ini:[gh-actions]
                 # - /setup.cfg:[mypy]
                 # - /libqtile/scripts/check.py mypy argument
+                # If adding new python versions, consider also updating
+                # python version in .readthedocs.yaml
                 python-version: [pypy-3.7, 3.7, 3.8, 3.9, '3.10']
         steps:
             - uses: actions/checkout@v2
@@ -36,7 +38,7 @@ jobs:
                   libgles2-mesa-dev libgbm-dev libinput-dev libxkbcommon-dev libpixman-1-dev libpciaccess-dev \
                   dbus-x11 libnotify-bin \
                   xwayland libxcb-composite0-dev libxcb-icccm4-dev libxcb-res0-dev \
-                  libxcb-render0-dev libxcb-res0-dev libxcb-xfixes0-dev 
+                  libxcb-render0-dev libxcb-res0-dev libxcb-xfixes0-dev vlc volumeicon-alsa
                 sudo pip -q install meson PyGObject
                 pip -q install "tox<4" tox-gh-actions 
             - name: Build wayland

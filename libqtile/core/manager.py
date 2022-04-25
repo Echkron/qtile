@@ -39,7 +39,7 @@ from libqtile.command import interface
 from libqtile.command.base import CommandError, CommandException, CommandObject
 from libqtile.command.client import InteractiveCommandClient
 from libqtile.command.interface import IPCCommandServer, QtileCommandInterface
-from libqtile.config import Click, Drag, Key, KeyChord, Match, Rule
+from libqtile.config import Click, Drag, Key, KeyChord, Match, Mouse, Rule
 from libqtile.config import ScratchPad as ScratchPadConfig
 from libqtile.config import Screen
 from libqtile.core.lifecycle import lifecycle
@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from typing_extensions import Literal
 
     from libqtile.command.base import ItemT
+    from libqtile.confreader import Config
     from libqtile.layout.base import Layout
 
 
@@ -72,11 +73,11 @@ class Qtile(CommandObject):
     def __init__(
         self,
         kore: base.Core,
-        config,  # mypy doesn't like the config's dynamic attributes
+        config: Config,
         no_spawn: bool = False,
         state: str | None = None,
         socket_path: str | None = None,
-    ):
+    ) -> None:
         self.core = kore
         self.config = config
         self.no_spawn = no_spawn
@@ -84,10 +85,11 @@ class Qtile(CommandObject):
         self.socket_path = socket_path
 
         self._drag: tuple | None = None
-        self.mouse_map: dict[int, list[Click | Drag]] = {}
+        self.mouse_map: dict[int, list[Mouse]] = {}
 
         self.windows_map: dict[int, base.WindowType] = {}
         self.widgets_map: dict[str, _Widget] = {}
+        self.renamed_widgets: list[str]
         self.groups_map: dict[str, _Group] = {}
         self.groups: list[_Group] = []
 
@@ -102,7 +104,7 @@ class Qtile(CommandObject):
 
         self.server = IPCCommandServer(self)
 
-    def load_config(self, initial=False) -> None:
+    def load_config(self, initial: bool = False) -> None:
         try:
             self.config.load()
             self.config.validate()
@@ -239,7 +241,7 @@ class Qtile(CommandObject):
         if self._stopped_event is not None:
             self._stopped_event.set()
 
-    def dump_state(self, buf) -> None:
+    def dump_state(self, buf: Any) -> None:
         try:
             pickle.dump(QtileState(self), buf, protocol=0)
         except:  # noqa: E722
@@ -298,7 +300,7 @@ class Qtile(CommandObject):
         self._finalize_configurables()
         self.core.finalize()
 
-    def _process_screens(self, reloading=False) -> None:
+    def _process_screens(self, reloading: bool = False) -> None:
         current_groups = [s.group for s in self.screens if hasattr(s, "group")]
         screens = []
 
@@ -455,7 +457,7 @@ class Qtile(CommandObject):
         for key in self.config.keys:
             self.grab_key(key)
 
-    def grab_button(self, button: Click | Drag) -> None:
+    def grab_button(self, button: Mouse) -> None:
         """Grab the given mouse button event"""
         try:
             button.modmask = self.core.grab_button(button)
@@ -526,20 +528,34 @@ class Qtile(CommandObject):
             self.update_desktops()
 
     def register_widget(self, w: _Widget) -> None:
-        """Register a bar widget
-
-        If a widget with the same name already exists, this will silently
-        ignore that widget. However, this is not necessarily a bug. By default
-        a widget's name is just ``self.__class__.lower()``, so putting multiple
-        widgets of the same class will alias and one will be inaccessible.
-        Since more than one groupbox widget is useful when you have more than
-        one screen, this is a not uncommon occurrence. If you want to use the
-        debug info for widgets with the same name, set the name yourself.
         """
-        if w.name:
-            if w.name in self.widgets_map:
-                return
-            self.widgets_map[w.name] = w
+        Register a bar widget
+
+        If a widget with the same name already exists, the new widget will be
+        automatically renamed by appending numeric suffixes. For example, if
+        the widget is named "foo", we will attempt "foo_1", "foo_2", and so on,
+        until a free name is found.
+
+        This naming convention is only used for qtile.widgets_map as every widget
+        MUST be registered here to ensure that objects are finalised correctly.
+
+        Widgets can still be accessed by their name when using
+        lazy.screen.widget[name] or lazy.bar["top"].widget[name] unless there are
+        duplicate widgets in the bar/screen.
+
+        A warning will be provided where renaming has occurred.
+        """
+        # Find unoccupied name by appending numeric suffixes
+        name = w.name
+        i = 0
+        while name in self.widgets_map:
+            i += 1
+            name = f"{w.name}_{i}"
+
+        if name != w.name:
+            self.renamed_widgets.append(name)
+
+        self.widgets_map[name] = w
 
     @property
     def current_layout(self) -> Layout:
@@ -578,7 +594,7 @@ class Qtile(CommandObject):
         self,
         reserved_space: tuple[int, int, int, int],  # [left, right, top, bottom]
         screen: Screen,
-    ):
+    ) -> None:
         """
         Free up space that has previously been reserved at the edge(s) of a screen.
         """
@@ -797,7 +813,7 @@ class Qtile(CommandObject):
             if sel is None:
                 return self.current_group.layout
             else:
-                return utils.lget(self.current_group.layouts, sel)
+                return lget(self.current_group.layouts, int(sel))
         elif name == "widget":
             return self.widgets_map.get(sel)  # type: ignore
         elif name == "bar":
@@ -817,40 +833,40 @@ class Qtile(CommandObject):
             if sel is None:
                 return self.current_screen
             else:
-                return utils.lget(self.screens, sel)
+                return lget(self.screens, int(sel))
         elif name == "core":
             return self.core
         return None
 
-    def call_soon(self, func: Callable, *args) -> asyncio.Handle:
+    def call_soon(self, func: Callable, *args: Any) -> asyncio.Handle:
         """A wrapper for the event loop's call_soon which also flushes the core's
         event queue after func is called."""
 
-        def f():
+        def f() -> None:
             func(*args)
             self.core.flush()
 
         return self._eventloop.call_soon(f)
 
-    def call_soon_threadsafe(self, func: Callable, *args) -> asyncio.Handle:
+    def call_soon_threadsafe(self, func: Callable, *args: Any) -> asyncio.Handle:
         """Another event loop proxy, see `call_soon`."""
 
-        def f():
+        def f() -> None:
             func(*args)
             self.core.flush()
 
         return self._eventloop.call_soon_threadsafe(f)
 
-    def call_later(self, delay, func: Callable, *args) -> asyncio.TimerHandle:
+    def call_later(self, delay: int, func: Callable, *args: Any) -> asyncio.TimerHandle:
         """Another event loop proxy, see `call_soon`."""
 
-        def f():
+        def f() -> None:
             func(*args)
             self.core.flush()
 
         return self._eventloop.call_later(delay, f)
 
-    def run_in_executor(self, func: Callable, *args):
+    def run_in_executor(self, func: Callable, *args: Any) -> asyncio.Future:
         """A wrapper for running a function in the event loop's default
         executor."""
         return self._eventloop.run_in_executor(None, func, *args)
@@ -902,15 +918,15 @@ class Qtile(CommandObject):
         """
         return {i.name: i.info() for i in self.groups}
 
-    def cmd_display_kb(self, *args) -> str:
+    def cmd_display_kb(self) -> str:
         """Display table of key bindings"""
 
         class FormatTable:
-            def __init__(self):
-                self.max_col_size = []
-                self.rows = []
+            def __init__(self) -> None:
+                self.max_col_size: list[int] = []
+                self.rows: list[list[str]] = []
 
-            def add(self, row):
+            def add(self, row: list[str]) -> None:
                 n = len(row) - len(self.max_col_size)
                 if n > 0:
                     self.max_col_size += [0] * n
@@ -919,23 +935,23 @@ class Qtile(CommandObject):
                         self.max_col_size[i] = len(f)
                 self.rows.append(row)
 
-            def getformat(self):
+            def getformat(self) -> tuple[str, int]:
                 format_string = " ".join(
                     "%-{0:d}s".format(max_col_size + 2) for max_col_size in self.max_col_size
                 )
                 return format_string + "\n", len(self.max_col_size)
 
-            def expandlist(self, list, n):
-                if not list:
+            def expandlist(self, list_: list[str], n: int) -> list[str]:
+                if not list_:
                     return ["-" * max_col_size for max_col_size in self.max_col_size]
-                n -= len(list)
+                n -= len(list_)
                 if n > 0:
-                    list += [""] * n
-                return list
+                    list_ += [""] * n
+                return list_
 
-            def __str__(self):
-                format, n = self.getformat()
-                return "".join([format % tuple(self.expandlist(row, n)) for row in self.rows])
+            def __str__(self) -> str:
+                format_, n = self.getformat()
+                return "".join(format_ % tuple(self.expandlist(row, n)) for row in self.rows)
 
         result = FormatTable()
         result.add(["Mode", "KeySym", "Mod", "Command", "Desc"])
@@ -959,13 +975,13 @@ class Qtile(CommandObject):
                     ]
                 )
                 rows.append(
-                    (
+                    [
                         mode,
                         name,
                         modifiers,
                         "{:s}({:s})".format(k.commands[0].name, allargs),
                         k.desc,
-                    )
+                    ]
                 )
                 return
             if isinstance(k, KeyChord):
@@ -975,7 +991,7 @@ class Qtile(CommandObject):
                     if mode == "<root>"
                     else "{}>{}".format(mode, k.mode if k.mode else "_")
                 )
-                rows.append((mode, name, modifiers, "", "Enter {:s} mode".format(new_mode_s)))
+                rows.append([mode, name, modifiers, "", "Enter {:s} mode".format(new_mode_s)])
                 for s in k.submappings:
                     walk_binding(s, new_mode)
                 return
@@ -1057,7 +1073,7 @@ class Qtile(CommandObject):
         ]
         return lst
 
-    def cmd_simulate_keypress(self, modifiers, key) -> None:
+    def cmd_simulate_keypress(self, modifiers: list[str], key: str) -> None:
         """Simulates a keypress on the focused window.
 
         Parameters
@@ -1336,7 +1352,7 @@ class Qtile(CommandObject):
             Name of the prompt widget (default: "prompt")
         """
 
-        def f(group):
+        def f(group: str) -> None:
             if group:
                 try:
                     self.groups_map[group].cmd_toscreen()
@@ -1361,7 +1377,7 @@ class Qtile(CommandObject):
             Name of the prompt widget (default: "prompt")
         """
 
-        def f(name):
+        def f(name: str) -> None:
             self.current_group.cmd_set_label(name or None)
 
         try:
@@ -1398,7 +1414,7 @@ class Qtile(CommandObject):
             this dict, the command it maps to will be executed instead.
         """
 
-        def f(args):
+        def f(args: str) -> None:
             if args:
                 if aliases and args in aliases:
                     args = aliases[args]
@@ -1431,7 +1447,7 @@ class Qtile(CommandObject):
             "xmessage")
         """
 
-        def f(cmd):
+        def f(cmd: str) -> None:
             if cmd:
                 # c here is used in eval() below
                 q = QtileCommandInterface(self)
@@ -1482,7 +1498,7 @@ class Qtile(CommandObject):
         match_args: dict[str, Any],
         rule_args: dict[str, Any],
         min_priorty: bool = False,
-    ):
+    ) -> int | None:
         """Add a dgroup rule, returns rule_id needed to remove it
 
         Parameters
@@ -1496,7 +1512,7 @@ class Qtile(CommandObject):
         """
         if not self.dgroups:
             logger.warning("No dgroups created")
-            return
+            return None
 
         match = Match(**match_args)
         rule = Rule([match], **rule_args)

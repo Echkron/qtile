@@ -179,6 +179,7 @@ class Bar(Gap, configurable.Configurable):
         self.window = None
         self.size_calculated = 0
         self._configured = False
+        self.has_keyboard: _Widget | None = None
 
         if isinstance(self.margin, int):
             self.margin = [self.margin] * 4
@@ -294,6 +295,7 @@ class Bar(Gap, configurable.Configurable):
         self.drawer.clear(self.background)
 
         self.crashed_widgets = []
+        self.qtile.renamed_widgets = []
         if self._configured:
             for i in self.widgets:
                 self._configure_widget(i)
@@ -309,6 +311,15 @@ class Bar(Gap, configurable.Configurable):
                 if success:
                     qtile.register_widget(i)
 
+        # Alert the user that we've renamed some widgets
+        if self.qtile.renamed_widgets:
+            logger.info(
+                "The following widgets were renamed in qtile.widgets_map: %s "
+                "To bind commands, rename the widget or use lazy.widget[new_name].",
+                ", ".join(self.qtile.renamed_widgets),
+            )
+            self.qtile.renamed_widgets.clear()
+
         self._remove_crashed_widgets()
         self.draw()
         self._resize(self.length, self.widgets)
@@ -317,6 +328,15 @@ class Bar(Gap, configurable.Configurable):
 
     def _configure_widget(self, widget):
         configured = True
+
+        if widget.supported_backends and (self.qtile.core.name not in widget.supported_backends):
+            logger.warning(
+                f"Widget removed: {widget.__class__.__name__} does not support "
+                f"{self.qtile.core.name}."
+            )
+            self.crashed_widgets.append(widget)
+            return False
+
         try:
             widget._configure(self.qtile, self)
 
@@ -342,13 +362,19 @@ class Bar(Gap, configurable.Configurable):
 
         for i in self.crashed_widgets:
             index = self.widgets.index(i)
-            crash = ConfigErrorWidget(widget=i)
-            crash._configure(self.qtile, self)
-            if self.horizontal:
-                crash.offsety = self.border_width[0]
-            else:
-                crash.offsetx = self.border_width[3]
-            self.widgets.insert(index, crash)
+
+            # Widgets that aren't available on the current backend should not
+            # be shown as "crashed" as the behaviour is expected. Only notify
+            # for genuine crashes.
+            if not i.supported_backends or (self.qtile.core.name in i.supported_backends):
+                crash = ConfigErrorWidget(widget=i)
+                crash._configure(self.qtile, self)
+                if self.horizontal:
+                    crash.offsety = self.border_width[0]
+                else:
+                    crash.offsetx = self.border_width[3]
+                self.widgets.insert(index, crash)
+
             self.widgets.remove(i)
 
     def _items(self, name: str) -> ItemT:

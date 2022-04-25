@@ -247,11 +247,16 @@ class Window(typing.Generic[S], _Base, base.Window, HasListeners):
 
         hook.fire("client_focus", self)
 
-    def togroup(self, group_name: str | None = None, *, switch_group: bool = False) -> None:
+    def togroup(
+        self, group_name: str | None = None, *, switch_group: bool = False, toggle: bool = False
+    ) -> None:
         """
         Move window to a specified group
 
         Also switch to that group if switch_group is True.
+
+        If `toggle` is True and and the specified group is already on the screen,
+        use the last used group as target instead.
         """
         if group_name is None:
             group = self.qtile.current_group
@@ -260,19 +265,24 @@ class Window(typing.Generic[S], _Base, base.Window, HasListeners):
                 raise CommandError("No such group: %s" % group_name)
             group = self.qtile.groups_map[group_name]
 
-        if self.group is not group:
-            self.hide()
-            if self.group:
-                if self.group.screen:
-                    # for floats remove window offset
-                    self.x -= self.group.screen.x
-                self.group.remove(self)
+        if self.group is group:
+            if toggle and hasattr(self.group.screen, "previous_group"):
+                group = self.group.screen.previous_group
+            else:
+                return
 
-            if group.screen and self.x < group.screen.x:
-                self.x += group.screen.x
-            group.add(self)
-            if switch_group:
-                group.cmd_toscreen(toggle=False)
+        self.hide()
+        if self.group:
+            if self.group.screen:
+                # for floats remove window offset
+                self.x -= self.group.screen.x
+            self.group.remove(self)
+
+        if group.screen and self.x < group.screen.x:
+            self.x += group.screen.x
+        group.add(self)
+        if switch_group:
+            group.cmd_toscreen(toggle=toggle)
 
     def paint_borders(self, color: ColorsType | None, width: int) -> None:
         if color:
@@ -480,7 +490,7 @@ class Window(typing.Generic[S], _Base, base.Window, HasListeners):
             if sel is None:
                 return self.group.layout if self.group else None
             else:
-                return utils.lget(self.group.layouts, sel) if self.group else None
+                return utils.lget(self.group.layouts, int(sel)) if self.group else None
         elif name == "screen":
             return self.group.screen if self.group else None
         return None
@@ -915,7 +925,6 @@ class XWindow(Window[xwayland.Surface]):
             # Add event listeners
             self.add_listener(self.surface.surface.commit_event, self._on_commit)
             self.add_listener(self.surface.request_fullscreen_event, self._on_request_fullscreen)
-            self.add_listener(self.surface.request_configure_event, self._on_request_configure)
             self.add_listener(self.surface.set_title_event, self._on_set_title)
             self.add_listener(self.surface.set_class_event, self._on_set_class)
             self.add_listener(
@@ -957,13 +966,6 @@ class XWindow(Window[xwayland.Surface]):
         logger.debug("Signal: xwindow request_fullscreen")
         if self.qtile.config.auto_fullscreen:
             self.fullscreen = not self.fullscreen
-
-    def _on_request_configure(
-        self, _listener: Listener, event: xwayland.SurfaceConfigureEvent
-    ) -> None:
-        logger.debug("Signal: xwindow request_configure")
-        self.surface.configure(event.x, event.y, event.width, event.height)
-        self.floating = True
 
     def _on_set_title(self, _listener: Listener, _data: Any) -> None:
         logger.debug("Signal: xwindow set_title")
@@ -1696,9 +1698,13 @@ class XdgPopupWindow(HasListeners):
             box = xdg_popup.base.get_geometry()
             lx, ly = self.core.output_layout.closest_point(parent.x + box.x, parent.y + box.y)
             wlr_output = self.core.output_layout.output_at(lx, ly)
-            assert wlr_output and isinstance(wlr_output.data, Output)
-            self.output = wlr_output.data
-            box = Box(*self.output.get_geometry())
+            if wlr_output and wlr_output.data:
+                output = wlr_output.data
+            else:
+                logger.warning("Failed to find output at for xdg_popup. Please report.")
+                output = self.core.outputs[0]
+            self.output = output
+            box = Box(*output.get_geometry())
             box.x = round(box.x - lx)
             box.y = round(box.y - ly)
             self.output_box = box
